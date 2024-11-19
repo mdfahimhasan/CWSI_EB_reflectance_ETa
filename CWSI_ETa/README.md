@@ -9,13 +9,6 @@ This repository contains code and resources related to Crop Water Stress Index (
 `CWSI Calculation:` Calculates CWSI using temperature, emissivity, and vapor pressure deficit to indicate plant water stress levels.  <br>
 `ETa Estimation:` Estimates actual evapotranspiration based on CWSI and potential ET.   <br>
 
-## To install and run the scripts
-To use the code in this repository, clone it to your local machine using Git:
-
-git clone https://github.com/mdfahimhasan/CWSI_ETa.git
-
-To run the scripts - use the `ETa_IRT_run.ipynb` file to run the model.
-
 ## Input data requirement and units 
 The following variables are required as daily inputs for the model, and must be formatted as described below:  
 
