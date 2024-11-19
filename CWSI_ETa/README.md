@@ -18,5 +18,6 @@ The following variables are required as daily inputs for the model, and must be 
 `NIR and Red bands`: unitless <br>
 `ETc`: mm/d <br>
 
-A sample input data file (.csv format) will look like this-
+__A sample input data file (.csv format) will look like this-__
+
 <img src="figs/data_format.PNG" height="260"/>
