@@ -6,7 +6,7 @@
 # This script is a simple replication of part of SEBAL model on how to use cold-hot pixel approach to estimate ETa.
 # This is an updated version of the original SEBAL script in this repo and incorporates translation of weather station
 # wind speed data to the target pixel's (crop) friction velocity, followed by hot-cold pixel dT calculation,
-# H, KE, ET_hourly, ET_daily calculation.
+# H, KE, ET_hourly, EF, and ET_daily calculation.
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -259,18 +259,18 @@ def calc_ET_daily(Ts_cold, EF, Rn_daily_avg):
     return ET_daily
 
 
-def calc_ET_fraction(ET_inst, ETref_hour):
+def calc_ETrF(ET_inst, ETref_hour):
     """
     Calculate the evapotranspiration fraction as the ratio of instantaneous ET to ETref.
 
     :param ET_inst: Instantaneous ET (mm/hr).
     :param ETref_hour: Hourly alfalfa or grass reference ET (mm/hr).
 
-    :return: Evapotranspiration fraction.
+    :return: Evapotranspiration fraction (ETrF).
     """
-    ET_frac = ET_inst / ETref_hour
+    ETrF = ET_inst / ETref_hour
 
-    return ET_frac
+    return ETrF
 
 
 if __name__ == '__main__':
@@ -341,7 +341,7 @@ if __name__ == '__main__':
     ET_daily = calc_ET_daily(Ts_cold, EF, Rn_daily_avg)
 
     # Step 15: Comparison between EF and alfalfa-based ET fraction (ETrf)
-    ETrF = calc_ET_fraction(ET_inst=ET_hourly, ETref_hour=ETri)
+    ETrF = calc_ETrF(ET_inst=ET_hourly, ETref_hour=ETri)
 
     # Expected Soybean ET
     Kc = Kcb  # no water stress condition
@@ -361,7 +361,7 @@ if __name__ == '__main__':
     print(f'i. Soybean latent heat flux: {LE_sat:.2f} W/m2 \n')
     print(f'j. Soybean instantaneous actual water use rate (ETai): {ET_hourly:.2f} mm/hr \n')
     print(f'k. Evaporative fraction for Soybean surface (EF): {EF:.2f} \n')
-    print(f'l. Alfalfa-based reference ET fraction (ETrf): {ETrF:.2f} \n')
+    print(f'l. Alfalfa-based reference ET fraction (ETrF): {ETrF:.2f} \n')
     print(f'm. Explanation of difference between EF and ETrf \n')
     print(f'n. Soybean daily actual evapotranspiration rate (ETad): {ET_daily:.2f} mm/d \n')
-    # print(f'o. Soybean potential ET: {:.2f} mm/d, ETc: {:.2f} mm/d')
+    print(f'o. Soybean ETc: {ETc:.2f} mm/d')
