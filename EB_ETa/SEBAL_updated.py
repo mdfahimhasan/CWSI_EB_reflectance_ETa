@@ -4,13 +4,90 @@
 # Fahim.Hasan@colostate.edu
 
 # This script is a simple replication of part of SEBAL model on how to use cold-hot pixel approach to estimate ETa.
-# For simplicity, this script don't require estimation of rah for crop pixel and many crucial parts. Rather they are directly provided.
+# This is an updated version of the original SEBAL script in this repo and incorporates translation of weather station
+# wind speed data to the target pixel's (crop) friction velocity, followed by hot-cold pixel dT calculation,
+# H, KE, ET_hourly, ET_daily calculation.
 
-# The script can be modified by integrating other components of SEBAL model to make it a fully functional ET estimation model.
-# For example: Surface Albedo, NDVI, Surface Emissivity, Net Radiation (Rn), Soil Heat Flux (G), Aerodynamic Resistance (rah),
-# Roughness Length for Momentum (Z_om), Friction Velocity (u*).
-
+import numpy as np
 import matplotlib.pyplot as plt
+
+
+def calc_heights(hc):
+    """
+    Calculates zero plane displacement height (d), aerodynamic roughness height for momentum transfer (z_om),
+    aerodynamic roughness height for heat and vapor transfer (z_oh).
+
+    :param hc: canopy height (m).
+
+    :return: d, z_om, and z_oh (unit in m).
+    """
+    d = 0.67 * hc  # m
+    z_om = 0.123 * hc  # m
+    z_oh = 0.1 * z_om  # m
+
+    return d, z_om, z_oh
+
+
+def calc_friction_vel_WS(u_x, z_x, z_om_station, k=0.41):
+    """
+    Calculates friction velocity (u*_station) at weather station.
+
+    :param u_x: Wind speed at weather station height (z_x) (m/s).
+    :param z_x: Height of wind measurements (m) at weather station.
+    :param z_om_station: Roughness length governing momentum transfer (m)).
+    :param k: Von Karman's constant. Default set to 0.41.
+
+    :return: friction velocity (m/s) at weather station.
+    """
+    friction_vel_ws = (k * u_x) / np.log(z_x / z_om_station)
+
+    return friction_vel_ws
+
+
+def wind_speed_blending_height(fric_vel_station, z_om_station, k=0.41):
+    """
+    Calculates horizontal wind speed at blending height (200m).
+
+    :param fric_vel_station: Friction velocity at weather station height (u*_station) (m/s).
+    :param z_om_station: Roughness length governing momentum transfer (m)).
+    :param k: Von Karman's constant. Default set to 0.41.
+
+    :return: friction velocity (m/s) at weather station.
+    """
+    u200 = fric_vel_station * np.log(200 / z_om_station) / k
+
+    return u200
+
+
+def calc_friction_vel_crop_surface(u200, z_om_crop, k=0.41):
+    """
+    Calculates friction velocity (u*_station) at weather station.
+
+    :param u200: Wind speed at weather station blending height of 200 m (m/s).
+    :param z_om_crop: Roughness length of crop surface governing momentum transfer (m)).
+    :param k: Von Karman's constant. Default set to 0.41.
+
+    :return: friction velocity (m/s) at weather station.
+    """
+    friction_vel_ws = (k * u200) / np.log(200 / z_om_crop)
+
+    return friction_vel_ws
+
+
+def calc_rah(fric_vel_crop, z_1=0.1, z_2=2, k=0.41):
+    """
+    Calculates Surface aerodynamic resistance (rah).
+
+    :param fric_vel_crop: friction velocity at crop location (m/s).
+    :param z_1: Near surface height of 0.1 m.
+    :param z_2: Near surface height of 2 m.
+    :param k: Von Karman's constant. Default set to 0.41.
+
+    :return: Surface aerodynamic resistance (s/m).
+    """
+    rah = np.log(z_2 / z_1) / (fric_vel_crop * k)
+
+    return rah
 
 
 def cold_hot_dT(Rn_hot, G_hot, rah_hot, air_density=1.1, Cp=1004):
@@ -29,11 +106,11 @@ def cold_hot_dT(Rn_hot, G_hot, rah_hot, air_density=1.1, Cp=1004):
     :return: dT and H values for both cold and hot pixels (dT_cold, dT_hot, H_cold, H_hot).
     """
     # cold pixel
-    H_cold = 0                      # considering neutral condition (recently wetted pixel)
+    H_cold = 0  # considering neutral condition (recently wetted pixel)
     dT_cold = 0
 
     # hot pixel
-    H_hot = Rn_hot - G_hot          # considering that there is crop but not transpiring (very water stressed crop)
+    H_hot = Rn_hot - G_hot  # considering that there is crop but not transpiring (very water stressed crop)
     dT_hot = H_hot * rah_hot / (air_density * Cp)
 
     return dT_cold, dT_hot, H_cold, H_hot
@@ -67,7 +144,7 @@ def plot_Ts_dT_eqn(Ts_cold, dT_cold, Ts_hot, dT_hot, slope, intercept):
     ax.text(0.2, 0.7, transform=ax.transAxes, s=f'dT = {round(slope, 2)} * Ts {round(intercept, 2)}')
     plt.xlabel('Ts (K)')
     plt.ylabel('dT (K)')
-    plt.savefig('figs/Ts_dT_plot_SEBAL.png')
+    plt.savefig('figs/Ts_dT_plot_SEBAL_updated.png')
 
 
 def calc_dT_crop(Ts, intercept, slope):
@@ -124,7 +201,7 @@ def calc_LE_vap(Ts_cold):
 
     :return: Latent heat of vaporization (LE_vap) (J/kg).
     """
-    LE_vap = (2.501 - 0.00236 * (Ts_cold - 273.15)) * (10**6)  # unit J/Kg
+    LE_vap = (2.501 - 0.00236 * (Ts_cold - 273.15)) * (10 ** 6)  # unit J/Kg
 
     return LE_vap
 
@@ -182,59 +259,109 @@ def calc_ET_daily(Ts_cold, EF, Rn_daily_avg):
     return ET_daily
 
 
-if __name__ == '__main__':
-    # Provided inputs
-    Ts_cold = 300.95  # Cold pixel radiometric surface temperature (K)
-    Ts_hot = 317.75  # Hot pixel radiometric surface temperature (K)
-    Rn_cold = 800  # Cold pixel net radiation (W/m2)
-    Rn_hot = 580  # Hot pixel net radiation (W/m2)
-    G_cold = 40  # Cold pixel soil heat flux (W/m2)
-    G_hot = 261  # Hot pixel soil heat flux (W/m2)
-    rah_hot = 17  # Hot pixel surface aerodynamic resistance (s/m)
-    rah_crop = 20  # Crop pixel surface aerodynamic resistance (s/m)
-    Cp = 1004  # Specific heat capacity of dry air (J/kg/K)
-    air_density = 1.1  # Density of air (kg/m3)
-    Ts_crop = 305.5  # Crop radiometric surface temperature (K)
-    Rn_sat = 725  # Crop pixel net radiation at satellite overpass (W/m2)
-    G_sat = 54.4  # Crop pixel soil heat flux at satellite overpass (W/m2)
-    Rn_daily_avg = 215  # Daily average daily net radiation (W/m2)
+def calc_ET_fraction(ET_inst, ETref_hour):
+    """
+    Calculate the evapotranspiration fraction as the ratio of instantaneous ET to ETref.
 
-    # Step 1: cold and hot pixel dT values
+    :param ET_inst: Instantaneous ET (mm/hr).
+    :param ETref_hour: Hourly alfalfa or grass reference ET (mm/hr).
+
+    :return: Evapotranspiration fraction.
+    """
+    ET_frac = ET_inst / ETref_hour
+
+    return ET_frac
+
+
+if __name__ == '__main__':
+    # Provided inputs for Soybean crop
+    Ts_cold = 292.7  # Cold pixel radiometric surface temperature (K)
+    Ts_hot = 309.9  # Hot pixel radiometric surface temperature (K)
+    Rn_hot = 410.8  # Hot pixel net radiation (W/m2)
+    G_hot = 176.6  # Hot pixel soil heat flux (W/m2)
+    rah_crop = 20  # Crop pixel surface aerodynamic resistance (s/m)
+    Cp = 1005  # Specific heat capacity of dry air (J/kg/K)
+    air_density = 1.15  # Density of air (kg/m3)
+    Ts_crop = (28 + 273.15)  # Crop radiometric surface temperature (K)
+    Rn_sat = 591  # Crop pixel net radiation at satellite overpass (W/m2)
+    G_sat = 71  # Crop pixel soil heat flux at satellite overpass (W/m2)
+    Rn_daily_avg = 256  # Daily average daily net radiation (W/m2)
+    hc_grass = 0.12     # weather station grass height (m)
+    u_x = 3.1           # weather station wind speed at measurement height (m/s)
+    measurement_height = 2  # wind speed measurement height at weather station (m)
+    hc_soybean = 0.6  # Soybean crop height (m)
+    ETri = 0.65  # Instantaneous alfalfa reference ET (mm/hr)
+    ETrd = 7.4  # Daily alfalfa reference ET (mm/d)
+    Kcb = 1.1  # Tabulated (no stress) alfalfa-based soybean basal crop coefficient
+
+    # Step 1: Weather station grass surface friction velocity
+    _, z_om_station, _ = calc_heights(hc=hc_grass)
+    fric_vel_station = calc_friction_vel_WS(u_x=u_x, z_x=measurement_height, z_om_station=z_om_station, k=0.41)
+
+    # Step 2: Horizontal wind speed at blending height
+    u200 = wind_speed_blending_height(fric_vel_station=fric_vel_station, z_om_station=z_om_station, k=0.41)
+
+    # Step 3: Friction velocity at Soybean surface
+    _, z_om_crop, _ = calc_heights(hc=hc_soybean)
+    fric_vel_crop = calc_friction_vel_crop_surface(u200=u200, z_om_crop=z_om_crop, k=0.41)
+
+    # Step 4: Aerodynamic resistance for the soybean surface
+    rah_crop = calc_rah(fric_vel_crop=fric_vel_crop, z_1=0.1, z_2=2, k=0.41)
+
+    # Step 5: Hot pixel friction velocity and surface aerodynamic resistance
+    # As thi simplified model considers neutral atmospheric condition
+    fric_vel_hot = fric_vel_crop
+    rah_hot = rah_crop
+
+    # Step 6: cold and hot pixel dT values
     dT_cold, dT_hot, H_cold, H_hot = cold_hot_dT(Rn_hot, G_hot, rah_hot, air_density, Cp)
 
-    # Step 2: linear relationship (slope and intercept) between Ts and dT
+    # Step 7: linear relationship (slope and intercept) between Ts and dT
     intercept, slope = Ts_dT_linear(Ts_cold, dT_cold, Ts_hot, dT_hot)
 
-    # Step 3: plot Ts-dT relationship plot
+    # Step 8: plot Ts-dT relationship plot
     plot_Ts_dT_eqn(Ts_cold, dT_cold, Ts_hot, dT_hot, slope, intercept)
 
-    # Step 4: dT for the crop pixel
+    # Step 9: dT for the crop pixel
     dT_crop = calc_dT_crop(Ts_crop, intercept, slope)
 
-    # Step 5: sensible heat flux (H) for the crop pixel
-    H_sat = calc_H(dT_crop, rah_crop, air_density, Cp)
+    # Step 10: sensible heat flux (H) for the crop pixel
+    H_sat = calc_H(dT_crop = dT_crop, rah_crop=rah_crop, air_density=air_density, Cp=Cp)
 
-    # Step 6: instantaneous latent heat flux (LE) for the crop pixel
+    # Step 11: instantaneous latent heat flux (LE) for the crop pixel
     LE_sat = calc_instant_LE(Rn_sat, G_sat, H_sat)
 
-    # Step 7: hourly evapotranspiration rate for the crop pixel
+    # Step 12: hourly evapotranspiration rate for the crop pixel
     ET_hourly = calc_ET_inst(LE_sat, Ts_cold, t=3600)
 
-    # Step 8: evaporative fraction (EF) for the crop pixel
+    # Step 13: evaporative fraction (EF) for the crop pixel
     EF = calc_EF(LE_sat, Rn_sat, G_sat)
 
-    # Step 9: Calculate daily evapotranspiration rate for the crop pixel
+    # Step 14: Calculate daily evapotranspiration rate for the crop pixel
     ET_daily = calc_ET_daily(Ts_cold, EF, Rn_daily_avg)
 
-    # Print results using f-strings
-    print(f'1. Cold pixel dT value: {dT_cold:.2f} K')
-    print(f'2. Hot pixel dT value: {dT_hot:.2f} K')
-    print(f'3. Cold pixel sensible heat flux: {H_cold:.2f} W/m2')
-    print(f'4. Hot pixel sensible heat flux: {H_hot:.2f} W/m2')
-    print(f'5. dT equation (slope and intercept): slope = {slope:.2f}, intercept = {intercept:.2f}')
-    print(f'6. Crop pixel sensible heat flux: {H_sat:.2f} W/m2')
-    print(f'7. Crop pixel instantaneous latent heat flux: {LE_sat:.2f} W/m2')
-    print(f'8. Crop pixel hourly evapotranspiration rate: {ET_hourly:.2f} mm/hr')
-    print(f'9. Crop pixel evaporative fraction: {EF:.2f}')
-    print(f'10. Crop pixel daily evapotranspiration rate: {ET_daily:.2f} mm/day')
+    # Step 15: Comparison between EF and alfalfa-based ET fraction (ETrf)
+    ETrF = calc_ET_fraction(ET_inst=ET_hourly, ETref_hour=ETri)
 
+    # Expected Soybean ET
+    Kc = Kcb  # no water stress condition
+    ETc = Kc * ETrd
+
+    # Print results using f-strings
+    print(f'a. Weather station grass surface friction velocity: {fric_vel_station:.2f} m/s \n')
+    print(f'b. Horizontal wind speed at a blending height of 200 m: {u200:.2f} m/s \n')
+    print(f'c. Friction velocity for the soybean surface: {fric_vel_crop:.2f} m/s \n')
+    print(f'd. Aerodynamic resistance for the soybean surface: {rah_crop:.2f} s/m \n')
+    print('The atmosphere is assumed to be at neutral condition, no requirement for atmospheric stability correction')
+    print(f'e. Hot pixel friction velocity: {fric_vel_hot:.2f} m/s')
+    print(f'and Hot pixel surface aerodynamic resistance: {rah_hot:.2f} s/m \n')
+    print(f'f. dT equation (slope and intercept): slope = {slope:.2f}, intercept = {intercept:.2f} \n')
+    print(f'g. dT value for the soybean surface: {dT_crop} \n')
+    print(f'h. Soybean sensible heat flux: {H_sat:.2f} W/m2 \n')
+    print(f'i. Soybean latent heat flux: {LE_sat:.2f} W/m2 \n')
+    print(f'j. Soybean instantaneous actual water use rate (ETai): {ET_hourly:.2f} mm/hr \n')
+    print(f'k. Evaporative fraction for Soybean surface (EF): {EF:.2f} \n')
+    print(f'l. Alfalfa-based reference ET fraction (ETrf): {ETrF:.2f} \n')
+    print(f'm. Explanation of difference between EF and ETrf \n')
+    print(f'n. Soybean daily actual evapotranspiration rate (ETad): {ET_daily:.2f} mm/d \n')
+    # print(f'o. Soybean potential ET: {:.2f} mm/d, ETc: {:.2f} mm/d')
