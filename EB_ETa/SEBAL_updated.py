@@ -347,7 +347,7 @@ if __name__ == '__main__':
     Kc = Kcb  # no water stress condition
     ETc = Kc * ETrd
 
-    Kc_table = 1.15 * 0.83  # From Hoffman 2007, Kc_mid from table 8.2
+    Kc_table = 1.15   # From Hoffman 2007, Kc_mid from table 8.2
     potential_ET = Kc_table * ETrd
 
     # Print results using f-strings
