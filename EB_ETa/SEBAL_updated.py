@@ -343,9 +343,12 @@ if __name__ == '__main__':
     # Step 15: Comparison between EF and alfalfa-based ET fraction (ETrf)
     ETrF = calc_ETrF(ET_inst=ET_hourly, ETref_hour=ETri)
 
-    # Expected Soybean ET
+    # Soybean ETc and potential ET
     Kc = Kcb  # no water stress condition
     ETc = Kc * ETrd
+
+    Kc_table = 1.15 * 0.83  # From Hoffman 2007, Kc_mid from table 8.2
+    potential_ET = Kc_table * ETrd
 
     # Print results using f-strings
     print(f'a. Weather station grass surface friction velocity: {fric_vel_station:.2f} m/s \n')
@@ -364,4 +367,4 @@ if __name__ == '__main__':
     print(f'l. Alfalfa-based reference ET fraction (ETrF): {ETrF:.2f} \n')
     print(f'm. Explanation of difference between EF and ETrf \n')
     print(f'n. Soybean daily actual evapotranspiration rate (ETad): {ET_daily:.2f} mm/d \n')
-    print(f'o. Soybean ETc: {ETc:.2f} mm/d')
+    print(f'o. Soybean potential ET: {potential_ET:.2f} mm/d, ETc: {ETc:.2f} mm/d')
